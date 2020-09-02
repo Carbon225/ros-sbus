@@ -59,7 +59,7 @@ int main(int argc, char **argv)
 
     ROS_INFO("SBUS node started");
 
-    while ((ret = sbus.read()) != SBUS_FAIL)
+    while ((ret = sbus.read()) != SBUS_FAIL && ros::ok())
     {
         if (ret == SBUS_ERR_DESYNC)
         {
