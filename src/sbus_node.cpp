@@ -25,8 +25,8 @@ void onPacket(sbus_packet_t packet)
 
 void sbusInCallback(const ros_sbus::SbusPacket::ConstPtr &msg)
 {
-    static uint16_t channels[16];
-    static sbus_packet_t packet = {
+    uint16_t channels[16];
+    sbus_packet_t packet = {
             .channels = channels
     };
     SbusConvertPacketMessage(*msg, packet);
@@ -45,7 +45,10 @@ int main(int argc, char **argv)
     sbusPub = nh.advertise<ros_sbus::SbusPacket>("sbus_out", 32);
     ros::Subscriber sbusSub = nh.subscribe("sbus_in", 32, sbusInCallback);
 
-    sbus_err_t ret = sbus.install("/dev/ttyUSB0");
+    ros::AsyncSpinner spinner(1);
+    spinner.start();
+
+    sbus_err_t ret = sbus.install("/dev/ttyAMA0", true);
     if (ret != SBUS_OK)
     {
         ROS_FATAL("SBUS install error: %d\n", ret);
@@ -56,15 +59,18 @@ int main(int argc, char **argv)
 
     ROS_INFO("SBUS node started");
 
-    while (ros::ok())
+    while ((ret = sbus.read()) != SBUS_FAIL)
     {
-        if (sbus.read() != SBUS_OK)
+        if (ret == SBUS_ERR_DESYNC)
         {
-            ROS_ERROR("SBUS read failed");
+            ROS_WARN("SBUS desync");
         }
-
-        ros::spinOnce();
     }
 
-    return 0;
+    if (ret != SBUS_OK)
+        ROS_ERROR("SBUS error: %d", ret);
+
+    ros::waitForShutdown();
+
+    return ret;
 }
