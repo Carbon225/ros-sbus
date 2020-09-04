@@ -45,7 +45,7 @@ include_directories(
 
 add_subdirectory(lib/raspberry-sbus)
 
-add_executable(sbus_node src/sbus_node.cpp)
+add_executable(sbus_node src/main.cpp src/sbus_node.cpp)
 target_link_libraries(sbus_node sbuslib ${catkin_LIBRARIES})
 
 #############

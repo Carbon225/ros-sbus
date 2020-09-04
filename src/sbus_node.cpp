@@ -1,29 +1,64 @@
-#include <cstdio>
-#include "ros/ros.h"
-#include "SBUS.h"
-#include "ros_sbus/SbusPacket.h"
 #include "MessageHelper.h"
+#include "sbus_node.h"
 
-ros::Publisher sbusPub;
+SBUSNode::SBUSNode(ros::NodeHandle *nodeHandle)
+    : nh(nodeHandle)
+{
 
-SBUS sbus;
+}
 
-void onPacket(sbus_packet_t packet)
+SBUSNode::~SBUSNode()
+{
+    stop();
+}
+
+int SBUSNode::start(const char *ttyPath)
+{
+    _pub = nh->advertise<ros_sbus::SbusPacket>("sbus_out", 1);
+    _sub = nh->subscribe("sbus_in", 1, &SBUSNode::inCallback, this);
+    getPassthrough();
+
+    _terminateThread = false;
+    _sbusThread = new std::thread(&SBUSNode::sbusTask, this);
+
+    return _sbus.install(ttyPath, true);
+}
+
+int SBUSNode::stop()
+{
+    if (_sbusThread)
+    {
+        _terminateThread = true;
+        pthread_kill(_sbusThread->native_handle(), SIGINT);
+        if (_sbusThread->joinable())
+            _sbusThread->join();
+
+        delete _sbusThread;
+        _sbusThread = nullptr;
+    }
+    return 0;
+}
+
+void SBUSNode::setCallback(sbus_packet_cb cb)
+{
+    _sbus.onPacket(cb);
+}
+
+void SBUSNode::sbusCallback(sbus_packet_t packet)
 {
     ros_sbus::SbusPacket packetMsg;
     SbusConvertPacketMessage(packet, packetMsg);
     packetMsg.header.stamp = ros::Time::now();
 
-    bool passthrough = false;
-    if (ros::param::get("~passthrough", passthrough) && passthrough)
+    if (getPassthrough())
     {
-        sbus.write(packet);
+        _sbus.write(packet);
     }
 
-    sbusPub.publish(packetMsg);
+    _pub.publish(packetMsg);
 }
 
-void sbusInCallback(const ros_sbus::SbusPacket::ConstPtr &msg)
+void SBUSNode::inCallback(const ros_sbus::SbusPacket::ConstPtr &msg)
 {
     uint16_t channels[16];
     sbus_packet_t packet = {
@@ -31,46 +66,28 @@ void sbusInCallback(const ros_sbus::SbusPacket::ConstPtr &msg)
     };
     SbusConvertPacketMessage(*msg, packet);
 
-    if (sbus.write(packet) != SBUS_OK)
+    if (_sbus.write(packet) != SBUS_OK)
     {
         ROS_ERROR("SBUS write failed");
     }
 }
 
-int main(int argc, char **argv)
+void SBUSNode::sbusTask()
 {
-    ros::init(argc, argv, "sbus_node");
-    ros::NodeHandle nh;
-
-    sbusPub = nh.advertise<ros_sbus::SbusPacket>("sbus_out", 32);
-    ros::Subscriber sbusSub = nh.subscribe("sbus_in", 32, sbusInCallback);
-
-    ros::AsyncSpinner spinner(1);
-    spinner.start();
-
-    sbus_err_t ret = sbus.install("/dev/ttyAMA0", true);
-    if (ret != SBUS_OK)
+    siginterrupt(SIGINT, true);
+    while (!_terminateThread)
     {
-        ROS_FATAL("SBUS install error: %d\n", ret);
-        return ret;
-    }
-
-    sbus.onPacket(onPacket);
-
-    ROS_INFO("SBUS node started");
-
-    while ((ret = sbus.read()) != SBUS_FAIL && ros::ok())
-    {
+        sbus_err_t ret = _sbus.read();
         if (ret == SBUS_ERR_DESYNC)
-        {
             ROS_WARN("SBUS desync");
-        }
+        else if (ret != SBUS_OK)
+            ROS_ERROR("SBUS error: %d", ret);
     }
+}
 
-    if (ret != SBUS_OK)
-        ROS_ERROR("SBUS error: %d", ret);
-
-    ros::waitForShutdown();
-
-    return ret;
+bool SBUSNode::getPassthrough()
+{
+    bool passthrough = false;
+    ros::param::get("~passthrough", passthrough);
+    return passthrough;
 }
