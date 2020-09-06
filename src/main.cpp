@@ -24,7 +24,7 @@ int main(int argc, char **argv)
     ros::spin();
 
     ROS_WARN("SBUS node terminating");
-    sbusNode.stop();
+    sbusNode->stop();
 
     return 0;
 }
