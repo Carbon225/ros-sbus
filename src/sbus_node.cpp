@@ -46,29 +46,44 @@ void SBUSNode::setCallback(sbus_packet_cb cb)
 
 void SBUSNode::sbusCallback(sbus_packet_t packet)
 {
-    ros_sbus::SbusPacket packetMsg;
-    SbusConvertPacketMessage(packet, packetMsg);
-    packetMsg.header.stamp = ros::Time::now();
-
     if (getPassthrough())
     {
+        if (_lastMsg != nullptr &&
+            _lastMsg->header.stamp + ros::Duration(1, 0) > ros::Time::now())
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                if (_lastMsg->channelMask[i])
+                {
+                    packet.channels[i] = _lastMsg->channels[i];
+                }
+            }
+        }
         _sbus.write(packet);
     }
 
+    ros_sbus::SbusPacket packetMsg;
+    SbusConvertPacketMessage(packet, packetMsg)
+    packetMsg.header.stamp = ros::Time::now();
     _pub.publish(packetMsg);
 }
 
 void SBUSNode::inCallback(const ros_sbus::SbusPacket::ConstPtr &msg)
 {
-    uint16_t channels[16];
-    sbus_packet_t packet = {
-            .channels = channels
-    };
-    SbusConvertPacketMessage(*msg, packet);
+    _lastMsg = msg;
 
-    if (_sbus.write(packet) != SBUS_OK)
+    if (!getPassthrough())
     {
-        ROS_ERROR("SBUS write failed");
+        uint16_t channels[16];
+        sbus_packet_t packet = {
+                .channels = channels
+        };
+        SbusConvertPacketMessage(*msg, packet)
+
+        if (_sbus.write(packet) != SBUS_OK)
+        {
+            ROS_ERROR("SBUS write failed");
+        }
     }
 }
 

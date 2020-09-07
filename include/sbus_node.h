@@ -24,6 +24,8 @@ private:
     ros::Publisher _pub;
     ros::Subscriber _sub;
 
+    ros_sbus::SbusPacket::ConstPtr _lastMsg = nullptr;
+
     std::thread *_sbusThread = nullptr;
     volatile std::sig_atomic_t _terminateThread = false;
     void sbusTask();
