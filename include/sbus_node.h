@@ -30,7 +30,7 @@ private:
     volatile std::sig_atomic_t _terminateThread = false;
     void sbusTask();
 
-    static bool getPassthrough();
+    bool getPassthrough();
 
     void inCallback(const ros_sbus::SbusPacket::ConstPtr &msg);
 };

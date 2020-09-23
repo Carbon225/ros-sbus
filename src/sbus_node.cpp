@@ -103,6 +103,7 @@ void SBUSNode::sbusTask()
 bool SBUSNode::getPassthrough()
 {
     bool passthrough = false;
-    ros::param::get("~passthrough", passthrough);
+    if (!nh->getParamCached("~passthrough", passthrough))
+        return false;
     return passthrough;
 }
